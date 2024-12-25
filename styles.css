@@ -1,0 +1,37 @@
+body {
+    margin: 0;
+    overflow: hidden;
+}
+
+#app {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+.ui-element {
+    position: absolute;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+#destination-select {
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+#navigation-instructions {
+    bottom: 20px;
+    right: 20px;
+    max-width: 200px;
+}
+
+select {
+    width: 100%;
+    padding: 5px;
+    font-size: 16px;
+}
+
