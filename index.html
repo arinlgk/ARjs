@@ -150,10 +150,9 @@
         function createArrow(start, end) {
             const arrow = document.createElement('a-entity');
             arrow.setAttribute('gps-entity-place', `latitude: ${start[0]}; longitude: ${start[1]}`);
-            arrow.setAttribute('look-at', `[gps-camera]`);
+            arrow.setAttribute('look-at', '[gps-camera]');
             arrow.innerHTML = `
-                <a-triangle color="yellow" rotation="0 0 -90" scale="15 20 20"></a-triangle>
-                <a-triangle color="yellow" rotation="0 0 90" scale="15 20 20"></a-triangle>
+                <a-entity gltf-model="path/to/arrow-model.glb" scale="0.5 0.5 0.5" position="0 0 0"></a-entity>
             `;
             scene.appendChild(arrow);
             arrows.push(arrow);
@@ -170,7 +169,7 @@
             scene.appendChild(marker);
         }
 
-        function updateUserPosition(position) {
+        function updateUser Position(position) {
             userPosition = [position.coords.latitude, position.coords.longitude];
             const camera = document.querySelector('[gps-camera]');
             camera.setAttribute('gps-camera', `simulateLatitude: ${userPosition[0]}; simulateLongitude: ${userPosition[1]}`);
@@ -182,7 +181,7 @@
         }
 
         if ('geolocation' in navigator) {
-            watchId = navigator.geolocation.watchPosition(updateUserPosition, handleLocationError, {
+            watchId = navigator.geolocation.watchPosition(updateUser Position, handleLocationError, {
                 enableHighAccuracy: true,
                 maximumAge: 0,
                 timeout: 5000
