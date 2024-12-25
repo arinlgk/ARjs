@@ -3,11 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>University Campus WebAR Navigation</title>
+    <title>Improved University Campus WebAR Navigation</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
+    <script src="https://unpkg.com/aframe-look-at-component@0.8.0/dist/aframe-look-at-component.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
     <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
         #ui-overlay {
             position: fixed;
             top: 0;
@@ -21,7 +27,6 @@
             align-items: center;
             color: white;
             z-index: 1000;
-            font-family: Arial, sans-serif;
         }
         select, button {
             margin: 10px;
@@ -29,7 +34,7 @@
             font-size: 16px;
             width: 200px;
         }
-        #instructions {
+        #instructions, #error-message {
             position: fixed;
             bottom: 20px;
             left: 20px;
@@ -38,8 +43,12 @@
             padding: 10px;
             border-radius: 5px;
             z-index: 900;
-            font-family: Arial, sans-serif;
             font-size: 14px;
+            max-width: 80%;
+        }
+        #error-message {
+            background: rgba(255, 0, 0, 0.7);
+            display: none;
         }
         #reset-button, #info-button {
             position: fixed;
@@ -62,13 +71,14 @@
             padding: 20px;
             border-radius: 10px;
             z-index: 950;
-            font-family: Arial, sans-serif;
             display: none;
+        }
+        .hidden {
+            display: none !important;
         }
     </style>
 </head>
 <body>
-    <!-- User Interface Overlay -->
     <div id="ui-overlay">
         <h1>University Campus Navigation</h1>
         <select id="destination-select">
@@ -81,30 +91,23 @@
         <button id="start-button">Start Navigation</button>
     </div>
 
-    <!-- Instructions Panel -->
-    <div id="instructions" style="display: none;">
+    <div id="instructions" class="hidden">
         Follow the arrows to reach your destination. Allow camera and GPS access for accurate navigation.
     </div>
 
-    <!-- Reset Button -->
-    <button id="reset-button" style="display: none;">Reset Navigation</button>
-
-    <!-- Info Button -->
-    <button id="info-button" style="display: none;">Show Instructions</button>
-
-    <!-- Landmark Information Panel -->
+    <button id="reset-button" class="hidden">Reset Navigation</button>
+    <button id="info-button" class="hidden">Show Instructions</button>
     <div id="landmark-info"></div>
+    <div id="error-message"></div>
 
-    <!-- A-Frame Scene -->
     <a-scene
         vr-mode-ui="enabled: false"
         embedded
-        arjs='sourceType: webcam; debugUIEnabled: true; detectionMode: mono_and_matrix; matrixCodeType: 3x3;'
-        renderer='antialias: true; alpha: true'
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+        renderer="antialias: true; alpha: true"
         campus-navigation>
 
         <a-assets>
-            <!-- 3D Models -->
             <a-asset-item id="arrow-model" src="https://cdn.glitch.com/your-project-id/arrow.glb"></a-asset-item>
             <a-asset-item id="library-model" src="https://cdn.glitch.com/your-project-id/library.glb"></a-asset-item>
             <a-asset-item id="student-center-model" src="https://cdn.glitch.com/your-project-id/student-center.glb"></a-asset-item>
@@ -112,12 +115,10 @@
             <a-asset-item id="sports-complex-model" src="https://cdn.glitch.com/your-project-id/sports-complex.glb"></a-asset-item>
         </a-assets>
 
-        <!-- Camera -->
         <a-camera gps-camera rotation-reader></a-camera>
     </a-scene>
 
     <script>
-    // Campus Navigation Component
     AFRAME.registerComponent('campus-navigation', {
         init: function () {
             this.destinationSelect = document.getElementById('destination-select');
@@ -127,16 +128,13 @@
             this.uiOverlay = document.getElementById('ui-overlay');
             this.instructions = document.getElementById('instructions');
             this.landmarkInfo = document.getElementById('landmark-info');
+            this.errorMessage = document.getElementById('error-message');
             this.arScene = document.querySelector('a-scene');
 
-            this.startButton.addEventListener('click', () => {
-                console.log("Start button clicked");
-                this.startNavigation();
-            });
+            this.startButton.addEventListener('click', this.startNavigation.bind(this));
             this.resetButton.addEventListener('click', this.resetNavigation.bind(this));
             this.infoButton.addEventListener('click', this.toggleInstructions.bind(this));
 
-            // Sample campus locations (latitude, longitude)
             this.locations = {
                 library: [40.7128, -74.0060],
                 studentCenter: [40.7130, -74.0062],
@@ -148,53 +146,60 @@
             this.arrowEntities = [];
             this.landmarkEntity = null;
 
-            // Initialize audio for navigation cues
             this.audio = new Howl({
                 src: ['https://cdn.glitch.com/your-project-id/navigation-sound.mp3'],
                 volume: 0.5
             });
 
-            // Bind tick function to this component
             this.tick = AFRAME.utils.throttleTick(this.tick, 1000, this);
+
+            // Check for geolocation support
+            if ('geolocation' in navigator) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    this.userPosition = [position.coords.latitude, position.coords.longitude];
+                }, () => {
+                    this.showError('Unable to retrieve your location. Please enable GPS.');
+                });
+            } else {
+                this.showError('Geolocation is not supported by your browser.');
+            }
         },
 
         startNavigation: function () {
-            console.log("Start Navigation clicked");
             const destination = this.destinationSelect.value;
-            console.log("Selected destination:", destination);
             if (destination && this.locations[destination]) {
-                console.log("Valid destination selected");
-                this.uiOverlay.style.display = 'none';
+                this.uiOverlay.classList.add('hidden');
                 this.arScene.style.display = 'block';
-                this.instructions.style.display = 'block';
-                this.resetButton.style.display = 'block';
-                this.infoButton.style.display = 'block';
+                this.instructions.classList.remove('hidden');
+                this.resetButton.classList.remove('hidden');
+                this.infoButton.classList.remove('hidden');
                 this.generatePath(this.locations[destination]);
                 this.placeLandmark(destination);
             } else {
-                console.log("Invalid destination");
-                alert("Please select a valid destination");
+                this.showError('Please select a valid destination.');
             }
         },
 
         resetNavigation: function () {
-            this.uiOverlay.style.display = 'flex';
+            this.uiOverlay.classList.remove('hidden');
             this.arScene.style.display = 'none';
-            this.instructions.style.display = 'none';
-            this.resetButton.style.display = 'none';
-            this.infoButton.style.display = 'none';
+            this.instructions.classList.add('hidden');
+            this.resetButton.classList.add('hidden');
+            this.infoButton.classList.add('hidden');
             this.landmarkInfo.style.display = 'none';
             this.clearNavigation();
         },
 
         toggleInstructions: function () {
-            this.instructions.style.display = this.instructions.style.display === 'none' ? 'block' : 'none';
+            this.instructions.classList.toggle('hidden');
         },
 
         generatePath: function (destination) {
-            // In a real application, this would use a pathfinding algorithm
-            // For this example, we'll create a simple direct path
-            const startPosition = this.getCurrentPosition();
+            if (!this.userPosition) {
+                this.showError('User location not available. Please ensure GPS is enabled.');
+                return;
+            }
+            const startPosition = this.userPosition;
             this.currentPath = [
                 startPosition,
                 [startPosition[0] + 0.0001, startPosition[1] + 0.0001],
@@ -205,25 +210,22 @@
         },
 
         createArrows: function () {
-            // Remove any existing arrows
-            this.arrowEntities.forEach(arrow => arrow.parentNode.removeChild(arrow));
-            this.arrowEntities = [];
+            this.clearNavigation();
 
-            // Create new arrows for the current path
             for (let i = 0; i < this.currentPath.length - 1; i++) {
                 const start = this.currentPath[i];
                 const end = this.currentPath[i + 1];
                 const arrow = document.createElement('a-entity');
                 arrow.setAttribute('gps-entity-place', `latitude: ${start[0]}; longitude: ${start[1]}`);
-                
-                // Use 3D arrow model
                 arrow.setAttribute('gltf-model', '#arrow-model');
                 arrow.setAttribute('scale', '0.5 0.5 0.5');
-                arrow.setAttribute('position', '0 1.5 0'); // Raise arrow 1.5 meters above ground
+                arrow.setAttribute('position', '0 1.5 0');
                 
-                // Calculate rotation to point to next waypoint
-                const angle = this.calculateAngle(start, end);
-                arrow.setAttribute('rotation', `0 ${angle} 0`);
+                const lookAtEntity = document.createElement('a-entity');
+                lookAtEntity.setAttribute('gps-entity-place', `latitude: ${end[0]}; longitude: ${end[1]}`);
+                this.arScene.appendChild(lookAtEntity);
+                
+                arrow.setAttribute('look-at', lookAtEntity);
                 
                 this.arScene.appendChild(arrow);
                 this.arrowEntities.push(arrow);
@@ -242,7 +244,6 @@
             landmark.setAttribute('scale', '0.1 0.1 0.1');
             landmark.setAttribute('position', '0 0 0');
             
-            // Add click event listener to show landmark info
             landmark.addEventListener('click', () => {
                 this.showLandmarkInfo(destination);
             });
@@ -255,7 +256,7 @@
             const info = {
                 library: "The University Library: Open 24/7 with over 1 million books.",
                 studentCenter: "Student Center: Hub for student activities and dining options.",
-                scienceLab: "State-of-the-art research facilities.",
+                scienceLab: "Science Laboratory: State-of-the-art research facilities.",
                 sportsComplex: "Sports Complex: Home to our championship teams."
             };
             this.landmarkInfo.textContent = info[destination];
@@ -263,14 +264,6 @@
             setTimeout(() => {
                 this.landmarkInfo.style.display = 'none';
             }, 5000);
-        },
-
-        calculateAngle: function (start, end) {
-            const y = Math.sin(end[1] - start[1]) * Math.cos(end[0]);
-            const x = Math.cos(start[0]) * Math.sin(end[0]) -
-                      Math.sin(start[0]) * Math.cos(end[0]) * Math.cos(end[1] - start[1]);
-            const angle = Math.atan2(y, x) * 180 / Math.PI;
-            return angle;
         },
 
         clearNavigation: function () {
@@ -282,66 +275,49 @@
             }
         },
 
-        tick: function (time, timeDelta) {
-            // This function is called every frame
+        tick: function () {
             if (this.arrowEntities.length > 0) {
-                // Get current GPS position
-                const currentPosition = this.getCurrentPosition();
-                
-                // Check if user is close to any waypoint
-                for (let i = 0; i < this.currentPath.length; i++) {
-                    const waypoint = this.currentPath[i];
-                    if (this.distanceBetween(currentPosition, waypoint) < 10) { // 10 meters threshold
-                        // Remove passed waypoint's arrow
-                        if (this.arrowEntities[i]) {
-                            this.arrowEntities[i].parentNode.removeChild(this.arrowEntities[i]);
-                            this.arrowEntities.splice(i, 1);
-                            this.currentPath.splice(i, 1);
-                            i--;
-                            
-                            // Play audio cue
-                            this.audio.play();
+                navigator.geolocation.getCurrentPosition(position => {
+                    const currentPosition = [position.coords.latitude, position.coords.longitude];
+                    
+                    for (let i = 0; i < this.currentPath.length; i++) {
+                        const waypoint = this.currentPath[i];
+                        if (this.distanceBetween(currentPosition, waypoint) < 10) {
+                            if (this.arrowEntities[i]) {
+                                this.arrowEntities[i].parentNode.removeChild(this.arrowEntities[i]);
+                                this.arrowEntities.splice(i, 1);
+                                this.currentPath.splice(i, 1);
+                                i--;
+                                this.audio.play();
+                            }
                         }
                     }
-                }
 
-                // Update arrow rotations based on current position
-                this.updateArrowRotations(currentPosition);
-
-                // Check if user has deviated from the path
-                if (this.hasDeviatedFromPath(currentPosition)) {
-                    this.recalculatePath(currentPosition);
-                }
+                    if (this.hasDeviatedFromPath(currentPosition)) {
+                        this.recalculatePath(currentPosition);
+                    }
+                }, () => {
+                    this.showError('Unable to update your location. Please ensure GPS is enabled.');
+                });
             }
-        },
-
-        getCurrentPosition: function () {
-            // In a real application, this would return the device's actual GPS coordinates
-            // For this demo, we'll return a simulated position
-            return [40.7128, -74.0060];
         },
 
         distanceBetween: function (point1, point2) {
-            // Calculate distance between two GPS coordinates
-            // This is a simplified calculation and doesn't account for Earth's curvature
-            const dx = (point2[1] - point1[1]) * 111000;
-            const dy = (point2[0] - point1[0]) * 111000;
-            return Math.sqrt(dx * dx + dy * dy);
-        },
+            const R = 6371e3; // Earth's radius in meters
+            const φ1 = point1[0] * Math.PI / 180;
+            const φ2 = point2[0] * Math.PI / 180;
+            const Δφ = (point2[0] - point1[0]) * Math.PI / 180;
+            const Δλ = (point2[1] - point1[1]) * Math.PI / 180;
 
-        updateArrowRotations: function (currentPosition) {
-            for (let i = 0; i < this.arrowEntities.length; i++) {
-                const arrow = this.arrowEntities[i];
-                const nextWaypoint = this.currentPath[i + 1];
-                if (nextWaypoint) {
-                    const angle = this.calculateAngle(currentPosition, nextWaypoint);
-                    arrow.setAttribute('rotation', `0 ${angle} 0`);
-                }
-            }
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c;
         },
 
         hasDeviatedFromPath: function (currentPosition) {
-            // Check if the user has deviated significantly from the path
             const threshold = 20; // meters
             for (let waypoint of this.currentPath) {
                 if (this.distanceBetween(currentPosition, waypoint) < threshold) {
@@ -352,7 +328,6 @@
         },
 
         recalculatePath: function (currentPosition) {
-            // Find the nearest waypoint
             let nearestWaypoint = this.currentPath[0];
             let minDistance = Infinity;
             for (let waypoint of this.currentPath) {
@@ -363,30 +338,32 @@
                 }
             }
 
-            // Regenerate path from current position to nearest waypoint
             const index = this.currentPath.indexOf(nearestWaypoint);
             this.currentPath = [
                 currentPosition,
                 ...this.currentPath.slice(index)
             ];
             this.createArrows();
-        }
-    });
-    </script>
-    <div id="error-message" style="position: fixed; bottom: 20px; right: 20px; background: rgba(255,0,0,0.7); color: white; padding: 10px; border-radius: 5px; display: none;"></div>
-    <script>
-        function showError(message) {
-            const errorDiv = document.getElementById('error-message');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
+        },
+
+        showError: function (message) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.style.display = 'block';
             setTimeout(() => {
-                errorDiv.style.display = 'none';
+                this.errorMessage.style.display = 'none';
             }, 5000);
         }
-        window.addEventListener('error', function(event) {
-            console.error("JavaScript error:", event.message, "at", event.filename, ":", event.lineno);
-            showError(`Error: ${event.message} at ${event.filename}:${event.lineno}`);
-        });
+    });
+
+    window.addEventListener('error', function(event) {
+        console.error("JavaScript error:", event.message, "at", event.filename, ":", event.lineno);
+        const errorMessage = `Error: ${event.message} at ${event.filename}:${event.lineno}`;
+        document.getElementById('error-message').textContent = errorMessage;
+        document.getElementById('error-message').style.display = 'block';
+        setTimeout(() => {
+            document.getElementById('error-message').style.display = 'none';
+        }, 5000);
+    });
     </script>
 </body>
 </html>
