@@ -3,36 +3,203 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UMP Pekan AR Navigation</title>
+    <title>Campus WebAR Navigation</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <script src="https://unpkg.com/aframe-look-at-component@0.8.0/dist/aframe-look-at-component.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
-    <script src="https://unpkg.com/aframe-gps-entity-place@1.1.0/dist/aframe-gps-entity-place.min.js"></script>
-    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 1000;
+        }
+        select, button {
+            margin: 10px;
+            padding: 10px;
+            font-size: 16px;
+            width: 200px;
+        }
+        #error-message {
+            color: red;
+            margin-top: 10px;
+        }
+        #reset-button {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 999;
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
 </head>
 <body>
-    <div id="app">
-        <a-scene
-            embedded
-            arjs='sourceType: webcam; debugUIEnabled: false; sourceWidth: 1280; sourceHeight: 960; displayWidth: 1280; displayHeight: 960;'
-            vr-mode-ui="enabled: false"
-        >
-            <a-camera gps-camera rotation-reader></a-camera>
-        </a-scene>
-
-        <div id="destination-select" class="ui-element">
-            <select id="destination-dropdown">
-                <option value="">Select Destination</option>
-            </select>
-        </div>
-
-        <div id="navigation-instructions" class="ui-element">
-            <h3>Navigation Instructions:</h3>
-            <p id="instructions-text"></p>
-        </div>
+    <div id="ui-overlay">
+        <h1>Campus Navigation</h1>
+        <select id="destination-select">
+            <option value="">Select Destination</option>
+            <option value="library">Library</option>
+            <option value="studentCenter">Student Center</option>
+            <option value="scienceLab">Science Lab</option>
+            <option value="sportsComplex">Sports Complex</option>
+        </select>
+        <button id="start-button">Start Navigation</button>
+        <div id="error-message"></div>
     </div>
 
-    <script src="app.js"></script>
+    <button id="reset-button" class="hidden">Reset</button>
+
+    <a-scene
+        vr-mode-ui="enabled: false"
+        embedded
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+        renderer="antialias: true; alpha: true"
+    >
+        <a-camera gps-camera rotation-reader></a-camera>
+    </a-scene>
+
+    <script>
+        const uiOverlay = document.getElementById('ui-overlay');
+        const destinationSelect = document.getElementById('destination-select');
+        const startButton = document.getElementById('start-button');
+        const resetButton = document.getElementById('reset-button');
+        const errorMessage = document.getElementById('error-message');
+        const scene = document.querySelector('a-scene');
+
+        const locations = {
+            library: [40.7128, -74.0060],
+            studentCenter: [40.7130, -74.0062],
+            scienceLab: [40.7132, -74.0064],
+            sportsComplex: [40.7134, -74.0066]
+        };
+
+        let userPosition = null;
+        let watchId = null;
+        let arrows = [];
+
+        function startNavigation() {
+            const destination = destinationSelect.value;
+            if (destination && userPosition) {
+                uiOverlay.classList.add('hidden');
+                resetButton.classList.remove('hidden');
+                createPath(userPosition, locations[destination]);
+            } else {
+                showError('Please select a destination and ensure your location is available.');
+            }
+        }
+
+        function resetNavigation() {
+            uiOverlay.classList.remove('hidden');
+            resetButton.classList.add('hidden');
+            clearPath();
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+        }
+
+        function createPath(start, end) {
+            clearPath();
+            const points = generateWaypoints(start, end);
+            points.forEach((point, index) => {
+                if (index < points.length - 1) {
+                    createArrow(point, points[index + 1]);
+                }
+            });
+            createDestinationMarker(end);
+        }
+
+        function clearPath() {
+            arrows.forEach(arrow => arrow.parentNode.removeChild(arrow));
+            arrows = [];
+            const destination = document.querySelector('#destination-marker');
+            if (destination) destination.parentNode.removeChild(destination);
+        }
+
+        function generateWaypoints(start, end) {
+            const points = [start];
+            const latDiff = end[0] - start[0];
+            const lonDiff = end[1] - start[1];
+            const steps = 5; // Adjust this for more or fewer waypoints
+
+            for (let i = 1; i < steps; i++) {
+                const lat = start[0] + (latDiff * i) / steps;
+                const lon = start[1] + (lonDiff * i) / steps;
+                points.push([lat, lon]);
+            }
+
+            points.push(end);
+            return points;
+        }
+
+        function createArrow(start, end) {
+            const arrow = document.createElement('a-entity');
+            arrow.setAttribute('gps-entity-place', `latitude: ${start[0]}; longitude: ${start[1]}`);
+            arrow.setAttribute('look-at', `[gps-camera]`);
+            arrow.innerHTML = `
+                <a-triangle color="yellow" rotation="0 0 -90" scale="15 20 20"></a-triangle>
+                <a-triangle color="yellow" rotation="0 0 90" scale="15 20 20"></a-triangle>
+            `;
+            scene.appendChild(arrow);
+            arrows.push(arrow);
+        }
+
+        function createDestinationMarker(position) {
+            const marker = document.createElement('a-entity');
+            marker.id = 'destination-marker';
+            marker.setAttribute('gps-entity-place', `latitude: ${position[0]}; longitude: ${position[1]}`);
+            marker.innerHTML = `
+                <a-sphere color="red" radius="20"></a-sphere>
+                <a-text value="Destination" align="center" color="#FFF" scale="100 100 100" position="0 25 0"></a-text>
+            `;
+            scene.appendChild(marker);
+        }
+
+        function updateUserPosition(position) {
+            userPosition = [position.coords.latitude, position.coords.longitude];
+            const camera = document.querySelector('[gps-camera]');
+            camera.setAttribute('gps-camera', `simulateLatitude: ${userPosition[0]}; simulateLongitude: ${userPosition[1]}`);
+        }
+
+        function handleLocationError(error) {
+            console.error('Geolocation error:', error);
+            showError('Unable to get your location. Please ensure GPS is enabled.');
+        }
+
+        if ('geolocation' in navigator) {
+            watchId = navigator.geolocation.watchPosition(updateUserPosition, handleLocationError, {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 5000
+            });
+        } else {
+            showError('Geolocation is not supported by your browser');
+        }
+
+        startButton.addEventListener('click', startNavigation);
+        resetButton.addEventListener('click', resetNavigation);
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+        });
+    </script>
 </body>
 </html>
-
